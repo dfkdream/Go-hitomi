@@ -20,15 +20,9 @@ type ImageInfo struct{
 
 func GetImageNames(GalleryID string) []string{
 	fmt.Println("starting downloading")
-	resp,err:=http.Get("https://hitomi.la/galleries/"+GalleryID+".js")
-	if err!=nil{
-		fmt.Println(err)
-	}
+	resp,_:=http.Get("https://hitomi.la/galleries/"+GalleryID+".js")
 	defer resp.Body.Close()
-	body,err:=ioutil.ReadAll(resp.Body)
-	if err!=nil{
-		fmt.Println(err)
-	}
+	body,_:=ioutil.ReadAll(resp.Body)
 	body=bytes.Replace(body,[]byte("var galleryinfo = "),[]byte(""),-1)
 	fmt.Println("replaced")
 	var ImageInfo []ImageInfo
@@ -70,10 +64,7 @@ func main() {
 					wg.Done()
 					return
 				}
-				data,err:=http.Get("https://a.hitomi.la/galleries/"+galleryid+"/"+Imagename)
-				if err!=nil{
-					fmt.Println(err)
-				}
+				data,_:=http.Get("https://a.hitomi.la/galleries/"+galleryid+"/"+Imagename)
 				defer data.Body.Close()
 				img,err:=ioutil.ReadAll(data.Body)
 				err=ioutil.WriteFile(galleryid+"/"+Imagename,img,os.FileMode(644))
