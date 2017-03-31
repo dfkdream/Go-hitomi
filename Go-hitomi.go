@@ -1,15 +1,16 @@
 package main
 
 import(
-	"bufio"
 	"fmt"
 	"net/http"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"encoding/json"
 	"bytes"
 	"runtime"
 	"sync"
+	"flag"
 )
 
 type ImageInfo struct{
@@ -37,16 +38,27 @@ func GetImageNames(GalleryID string) []string{
 	return ImageNames
 }
 
+var Gallery_ID=flag.String("Gallery_ID","","Hitomi.la Gallery ID")
+var Gallery_Name=flag.String("Gallery_Name","","Hitomi.la Gallery name")
+var Do_Compression=flag.Bool("Do_Compression",true,"Compress downloaded files if ture")
+
+func init(){
+	flag.StringVar(Gallery_ID,"i","","Hitomi.la Gallery ID")
+	flag.StringVar(Gallery_Name,"n","","Hitomi.la Gallery Name")
+	flag.BoolVar(Do_Compression,"c",true,"Compress downloaded files if true")
+}
 func main() {
+	flag.Parse()
+	if (*Gallery_Name==""){
+		*Gallery_Name=*Gallery_ID
+	}
+
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	fmt.Println("using",runtime.GOMAXPROCS(0),"CPU(s)")
 
-	scanner:=bufio.NewScanner(os.Stdin)
-	fmt.Print("Enter gallery ID: ")
-	scanner.Scan()
-	galleryid:=scanner.Text()
-	os.Mkdir(galleryid,0777)
+	galleryid:=*Gallery_ID
+	os.Mkdir(*Gallery_Name,0777)
 	ImageNames:=GetImageNames(galleryid)
 	fmt.Println(ImageNames)
 
@@ -81,4 +93,9 @@ func main() {
 		buff<-imagename
 	}
 	wg.Wait()
+
+	err:=exec.Command("7z","a",*Gallery_Name+".zip","./"+*Gallery_Name+"/*").Run()
+	if err!=nil{
+		fmt.Println(err)
+	}
 }
