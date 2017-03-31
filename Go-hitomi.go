@@ -40,15 +40,25 @@ func GetImageNames(GalleryID string) []string{
 
 var Gallery_ID=flag.String("Gallery_ID","","Hitomi.la Gallery ID")
 var Gallery_Name=flag.String("Gallery_Name","","Hitomi.la Gallery name")
-var Do_Compression=flag.Bool("Do_Compression",true,"Compress downloaded files if ture")
+var Do_Compression=flag.Bool("Do_Compression",true,"Compress downloaded files if true")
+var Remove_Origin=flag.Bool("Remove_Origin",true,"Remove original files if true")
 
 func init(){
 	flag.StringVar(Gallery_ID,"i","","Hitomi.la Gallery ID")
 	flag.StringVar(Gallery_Name,"n","","Hitomi.la Gallery Name")
 	flag.BoolVar(Do_Compression,"c",true,"Compress downloaded files if true")
+	flag.BoolVar(Remove_Origin,"r",true,"Remove original files if true")
 }
 func main() {
 	flag.Parse()
+	if (*Gallery_ID==""){
+		fmt.Println("<Commands>")
+		fmt.Println("-i : Gallery ID")
+		fmt.Println("-n : Gallery Name")
+		fmt.Println("-c : Compression")
+		fmt.Println("-r : Remove original files")
+		os.Exit(1)
+	}
 	if (*Gallery_Name==""){
 		*Gallery_Name=*Gallery_ID
 	}
@@ -56,6 +66,10 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	fmt.Println("using",runtime.GOMAXPROCS(0),"CPU(s)")
+
+	fmt.Println("Gallery ID :",*Gallery_ID)
+	fmt.Println("Gallery Name :",*Gallery_Name)
+	fmt.Println("Compression :",*Do_Compression)
 
 	galleryid:=*Gallery_ID
 	os.Mkdir(*Gallery_Name,0777)
@@ -79,7 +93,7 @@ func main() {
 				data,_:=http.Get("https://a.hitomi.la/galleries/"+galleryid+"/"+Imagename)
 				defer data.Body.Close()
 				img,err:=ioutil.ReadAll(data.Body)
-				err=ioutil.WriteFile(galleryid+"/"+Imagename,img,os.FileMode(644))
+				err=ioutil.WriteFile(*Gallery_Name+"/"+Imagename,img,os.FileMode(644))
 				if err==nil{
 					fmt.Println("[worker",workerID,"] downloaded",Imagename)
 				}else{
@@ -94,8 +108,17 @@ func main() {
 	}
 	wg.Wait()
 
+	fmt.Println("Compressing...")
+
 	err:=exec.Command("7z","a",*Gallery_Name+".zip","./"+*Gallery_Name+"/*").Run()
 	if err!=nil{
 		fmt.Println(err)
+	}
+
+	if *Remove_Origin==true{
+		err:=exec.Command("rd","/s","/q",*Gallery_Name).Run()
+		if err!=nil{
+			fmt.Println(err)
+		}
 	}
 }
