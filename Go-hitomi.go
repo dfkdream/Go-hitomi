@@ -38,16 +38,24 @@ func GetImageNames(GalleryID string) []string{
 	return ImageNames
 }
 
+func httpsvr(){
+	http.Handle("/",http.StripPrefix("/",http.FileServer(http.Dir("."))))
+
+	http.ListenAndServe(":80",nil)
+}
+
 var Gallery_ID=flag.String("Gallery_ID","","Hitomi.la Gallery ID")
 var Gallery_Name=flag.String("Gallery_Name","","Hitomi.la Gallery name")
 var Do_Compression=flag.Bool("Do_Compression",true,"Compress downloaded files if true")
 var Remove_Origin=flag.Bool("Remove_Origin",true,"Remove original files if true")
+var HTTPSvr=flag.Bool("HTTPSvr",false,"Start HTTP Server")
 
 func init(){
 	flag.StringVar(Gallery_ID,"i","","Hitomi.la Gallery ID")
 	flag.StringVar(Gallery_Name,"n","","Hitomi.la Gallery Name")
 	flag.BoolVar(Do_Compression,"c",true,"Compress downloaded files if true")
 	flag.BoolVar(Remove_Origin,"r",true,"Remove original files if true")
+	flag.BoolVar(HTTPSvr,"s",false,"Start HTTP Server")
 }
 func main() {
 	flag.Parse()
@@ -57,6 +65,7 @@ func main() {
 		fmt.Println("-n : Gallery Name")
 		fmt.Println("-c : Compression")
 		fmt.Println("-r : Remove original files")
+		fmt.Println("-s : Start HTTP Server")
 		os.Exit(1)
 	}
 	if (*Gallery_Name==""){
@@ -70,6 +79,8 @@ func main() {
 	fmt.Println("Gallery ID :",*Gallery_ID)
 	fmt.Println("Gallery Name :",*Gallery_Name)
 	fmt.Println("Compression :",*Do_Compression)
+	fmt.Println("Remove original files :",*Remove_Origin)
+	fmt.Println("Start HTTP Server :",*HTTPSvr)
 
 	galleryid:=*Gallery_ID
 	os.Mkdir(*Gallery_Name,0777)
@@ -110,15 +121,22 @@ func main() {
 
 	fmt.Println("Compressing...")
 
-	err:=exec.Command("7z","a",*Gallery_Name+".zip","./"+*Gallery_Name+"/*").Run()
-	if err!=nil{
-		fmt.Println(err)
-	}
-
-	if *Remove_Origin==true{
-		err:=exec.Command("rd","/s","/q",*Gallery_Name).Run()
+	if *Do_Compression==true{
+		err:=exec.Command("7z","a",*Gallery_Name+".zip","./"+*Gallery_Name+"/*").Run()
 		if err!=nil{
 			fmt.Println(err)
 		}
+	}
+
+	if *Remove_Origin==true{
+		err:=os.RemoveAll(*Gallery_Name)
+		if err!=nil{
+			fmt.Println(err)
+		}
+	}
+
+	if *HTTPSvr==true{
+		fmt.Println("HTTP Server started. Press Ctrl+C to exit")
+		httpsvr()
 	}
 }
