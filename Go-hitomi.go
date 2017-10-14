@@ -5,12 +5,12 @@ import(
 	"net/http"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"encoding/json"
 	"bytes"
 	"runtime"
 	"sync"
 	"flag"
+	"archive/zip"
 )
 
 type ImageInfo struct{
@@ -47,14 +47,13 @@ func httpsvr(){
 var Gallery_ID=flag.String("Gallery_ID","","Hitomi.la Gallery ID")
 var Gallery_Name=flag.String("Gallery_Name","","Hitomi.la Gallery name")
 var Do_Compression=flag.Bool("Do_Compression",true,"Compress downloaded files if true")
-var Remove_Origin=flag.Bool("Remove_Origin",true,"Remove original files if true")
 var HTTPSvr=flag.Bool("HTTPSvr",false,"Start HTTP Server")
+var mutex=new(sync.Mutex)
 
 func init(){
 	flag.StringVar(Gallery_ID,"i","","Hitomi.la Gallery ID")
 	flag.StringVar(Gallery_Name,"n","","Hitomi.la Gallery Name")
 	flag.BoolVar(Do_Compression,"c",true,"Compress downloaded files if true")
-	flag.BoolVar(Remove_Origin,"r",true,"Remove original files if true")
 	flag.BoolVar(HTTPSvr,"s",false,"Start HTTP Server")
 }
 func main() {
@@ -64,7 +63,6 @@ func main() {
 		fmt.Println("-i : Gallery ID")
 		fmt.Println("-n : Gallery Name")
 		fmt.Println("-c : Compression")
-		fmt.Println("-r : Remove original files")
 		fmt.Println("-s : Start HTTP Server")
 		os.Exit(1)
 	}
@@ -79,11 +77,26 @@ func main() {
 	fmt.Println("Gallery ID :",*Gallery_ID)
 	fmt.Println("Gallery Name :",*Gallery_Name)
 	fmt.Println("Compression :",*Do_Compression)
-	fmt.Println("Remove original files :",*Remove_Origin)
 	fmt.Println("Start HTTP Server :",*HTTPSvr)
 
 	galleryid:=*Gallery_ID
-	os.Mkdir(*Gallery_Name,0777)
+
+	var archiveFile *os.File
+	var zipWriter *zip.Writer
+	if *Do_Compression{
+		//init zip archiver
+		archiveFile,err:=os.OpenFile(
+			*Gallery_Name+".zip",
+			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+			os.FileMode(0644))
+		if err!=nil{
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		zipWriter=zip.NewWriter(archiveFile)
+	}else{
+		os.Mkdir(*Gallery_Name,0777)
+	}
 	ImageNames:=GetImageNames(galleryid)
 	fmt.Println(ImageNames)
 
@@ -104,13 +117,27 @@ func main() {
 				data,_:=http.Get("https://a.hitomi.la/galleries/"+galleryid+"/"+Imagename)
 				defer data.Body.Close()
 				img,err:=ioutil.ReadAll(data.Body)
-				err=ioutil.WriteFile(*Gallery_Name+"/"+Imagename,img,os.FileMode(644))
-				if err==nil{
-					fmt.Println("[worker",workerID,"] downloaded",Imagename)
+				if *Do_Compression{
+					mutex.Lock()
+					f,err:=zipWriter.Create(Imagename)
+					if err!=nil{
+						fmt.Println(err)
+					}
+					_,err=f.Write(img)
+					if err==nil{
+						fmt.Println("[worker",workerID,"] downloaded",Imagename)
+					}else{
+						fmt.Println(err)
+					}
+					mutex.Unlock()
 				}else{
-					fmt.Println(err)
-				}
-		
+					err=ioutil.WriteFile(*Gallery_Name+"/"+Imagename,img,os.FileMode(0644))
+					if err==nil{
+						fmt.Println("[worker",workerID,"] downloaded",Imagename)
+					}else{
+						fmt.Println(err)
+					}
+				}		
 			}
 		}(i)
 	}
@@ -119,20 +146,9 @@ func main() {
 	}
 	wg.Wait()
 
-	fmt.Println("Compressing...")
-
-	if *Do_Compression==true{
-		err:=exec.Command("7z","a",*Gallery_Name+".zip","./"+*Gallery_Name+"/*").Run()
-		if err!=nil{
-			fmt.Println(err)
-		}
-	}
-
-	if *Remove_Origin==true{
-		err:=os.RemoveAll(*Gallery_Name)
-		if err!=nil{
-			fmt.Println(err)
-		}
+	if *Do_Compression{
+		zipWriter.Close()
+		archiveFile.Close()
 	}
 
 	if *HTTPSvr==true{
