@@ -50,12 +50,85 @@ var Do_Compression=flag.Bool("Do_Compression",true,"Compress downloaded files if
 var HTTPSvr=flag.Bool("HTTPSvr",false,"Start HTTP Server")
 var mutex=new(sync.Mutex)
 
+func DownloadAndSave(id string, name string, comp bool){
+	var archiveFile *os.File
+	var zipWriter *zip.Writer
+	if comp{
+		//init zip archiver
+		archiveFile,err:=os.OpenFile(
+			name+".zip",
+			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+			os.FileMode(0644))
+		if err!=nil{
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		zipWriter=zip.NewWriter(archiveFile)
+	}else{
+		os.Mkdir(name,0777)
+	}
+	ImageNames:=GetImageNames(id)
+	fmt.Println(ImageNames)
+
+	wg:=new(sync.WaitGroup)
+
+	buff:=make(chan string,5)
+
+	for i:=0;i<5;i++{
+		ImageNames=append(ImageNames,"end")
+		wg.Add(1)
+		go func(workerID int){
+			for{
+				Imagename:=<-buff
+				if Imagename=="end"{
+					wg.Done()
+					return
+				}
+				data,_:=http.Get("https://a.hitomi.la/galleries/"+id+"/"+Imagename)
+				defer data.Body.Close()
+				img,err:=ioutil.ReadAll(data.Body)
+				if comp{
+					mutex.Lock()
+					f,err:=zipWriter.Create(Imagename)
+					if err!=nil{
+						fmt.Println(err)
+					}
+					_,err=f.Write(img)
+					if err==nil{
+						fmt.Println("[worker",workerID,"] downloaded",Imagename)
+					}else{
+						fmt.Println(err)
+					}
+					mutex.Unlock()
+				}else{
+					err=ioutil.WriteFile(name+"/"+Imagename,img,os.FileMode(0644))
+					if err==nil{
+						fmt.Println("[worker",workerID,"] downloaded",Imagename)
+					}else{
+						fmt.Println(err)
+					}
+				}		
+			}
+		}(i)
+	}
+	for _,imagename := range ImageNames{
+		buff<-imagename
+	}
+	wg.Wait()
+
+	if *Do_Compression{
+		zipWriter.Close()
+		archiveFile.Close()
+	}
+}
+
 func init(){
 	flag.StringVar(Gallery_ID,"i","","Hitomi.la Gallery ID")
 	flag.StringVar(Gallery_Name,"n","","Hitomi.la Gallery Name")
 	flag.BoolVar(Do_Compression,"c",true,"Compress downloaded files if true")
 	flag.BoolVar(HTTPSvr,"s",false,"Start HTTP Server")
 }
+
 func main() {
 	flag.Parse()
 	if (*Gallery_ID==""){
@@ -79,77 +152,7 @@ func main() {
 	fmt.Println("Compression :",*Do_Compression)
 	fmt.Println("Start HTTP Server :",*HTTPSvr)
 
-	galleryid:=*Gallery_ID
-
-	var archiveFile *os.File
-	var zipWriter *zip.Writer
-	if *Do_Compression{
-		//init zip archiver
-		archiveFile,err:=os.OpenFile(
-			*Gallery_Name+".zip",
-			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
-			os.FileMode(0644))
-		if err!=nil{
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		zipWriter=zip.NewWriter(archiveFile)
-	}else{
-		os.Mkdir(*Gallery_Name,0777)
-	}
-	ImageNames:=GetImageNames(galleryid)
-	fmt.Println(ImageNames)
-
-	wg:=new(sync.WaitGroup)
-
-	buff:=make(chan string,5)
-
-	for i:=0;i<5;i++{
-		ImageNames=append(ImageNames,"end")
-		wg.Add(1)
-		go func(workerID int){
-			for{
-				Imagename:=<-buff
-				if Imagename=="end"{
-					wg.Done()
-					return
-				}
-				data,_:=http.Get("https://a.hitomi.la/galleries/"+galleryid+"/"+Imagename)
-				defer data.Body.Close()
-				img,err:=ioutil.ReadAll(data.Body)
-				if *Do_Compression{
-					mutex.Lock()
-					f,err:=zipWriter.Create(Imagename)
-					if err!=nil{
-						fmt.Println(err)
-					}
-					_,err=f.Write(img)
-					if err==nil{
-						fmt.Println("[worker",workerID,"] downloaded",Imagename)
-					}else{
-						fmt.Println(err)
-					}
-					mutex.Unlock()
-				}else{
-					err=ioutil.WriteFile(*Gallery_Name+"/"+Imagename,img,os.FileMode(0644))
-					if err==nil{
-						fmt.Println("[worker",workerID,"] downloaded",Imagename)
-					}else{
-						fmt.Println(err)
-					}
-				}		
-			}
-		}(i)
-	}
-	for _,imagename := range ImageNames{
-		buff<-imagename
-	}
-	wg.Wait()
-
-	if *Do_Compression{
-		zipWriter.Close()
-		archiveFile.Close()
-	}
+	DownloadAndSave(*Gallery_ID,*Gallery_Name,*Do_Compression)
 
 	if *HTTPSvr==true{
 		fmt.Println("HTTP Server started. Press Ctrl+C to exit")
