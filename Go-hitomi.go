@@ -8,9 +8,58 @@ import(
 	"flag"
 	"archive/zip"
 	"io/ioutil"
-
-	"github.com/dfkdream/Go-hitomi/downloader"
+	"net/http"
+	"github.com/valyala/fasthttp"
+	"encoding/json"
+	"bytes"
 )
+
+type ImageInfo struct{
+	Width uint `json:"width"`
+	Name string `json:"name"`
+	Height uint `json:"height"`
+}
+
+type Result struct{
+	Image []byte
+	ImgName string
+	WK_ID int
+}
+
+func GetImageNamesFromID(GalleryID string) []string{
+	_,resp,_:=fasthttp.Get(nil,"https://hitomi.la/galleries/"+GalleryID+".js")
+	resp=bytes.Replace(resp,[]byte("var galleryinfo = "),[]byte(""),-1)
+	var ImageInfo []ImageInfo
+	json.Unmarshal(resp,&ImageInfo)
+	var ImageNames []string
+	for _,Info := range ImageInfo{
+		ImageNames=append(ImageNames,Info.Name)
+	}
+	return ImageNames
+}
+
+func LnsCurrentDirectory(){
+	http.Handle("/",http.StripPrefix("/",http.FileServer(http.Dir("."))))
+
+	http.ListenAndServe(":80",nil)
+}
+
+func DownloadImage(url string)[]byte{
+	if stat,img,err:=fasthttp.Get(nil,url);stat==200&&err==nil{
+		return img
+	}
+	return nil
+}
+
+func DownloadWorker(no int, GalleryId string, ctrl <-chan struct{}, jobs <-chan string, out chan<- Result){
+	for j:=range jobs{
+		select{
+		case out <- Result{DownloadImage("https://a.hitomi.la/galleries/"+GalleryId+"/"+j),j,no}:
+		case <-ctrl:
+			return
+		}
+	}
+}
 
 var Gallery_ID=flag.String("Gallery_ID","","Hitomi.la Gallery ID")
 var Gallery_Name=flag.String("Gallery_Name","","Hitomi.la Gallery name")
@@ -48,7 +97,7 @@ func main() {
 	fmt.Println("Start HTTP Server :",*HTTPSvr)
 
 	fmt.Println("fetching image list")
-	img_lst:=downloader.GetImageNamesFromID(*Gallery_ID)
+	img_lst:=GetImageNamesFromID(*Gallery_ID)
 	num_lst:=len(img_lst)
 	fmt.Println("fetched",num_lst,"images")
 
@@ -72,7 +121,7 @@ func main() {
 
 	ctrl:=make(chan struct{})
 	jobs:=make(chan string)
-	out:=make(chan downloader.Result)
+	out:=make(chan Result)
 
 	var wg sync.WaitGroup
 	NumWorkers:=10
@@ -80,7 +129,7 @@ func main() {
 
 	for i:=0;i<NumWorkers;i++{
 		go func(n int){
-			downloader.DownloadWorker(n,*Gallery_ID,ctrl,jobs,out)
+			DownloadWorker(n,*Gallery_ID,ctrl,jobs,out)
 			wg.Done()
 		}(i)
 	}
@@ -130,6 +179,6 @@ func main() {
 
 	if *HTTPSvr==true{
 		fmt.Println("HTTP Server started. Press Ctrl+C to exit")
-		downloader.LnsCurrentDirectory()
+		LnsCurrentDirectory()
 	}
 }
