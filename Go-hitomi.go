@@ -54,7 +54,7 @@ func DownloadImage(url string)[]byte{
 func DownloadWorker(no int, GalleryId string, ctrl <-chan struct{}, jobs <-chan string, out chan<- Result){
 	for j:=range jobs{
 		select{
-		case out <- Result{DownloadImage("https://a.hitomi.la/galleries/"+GalleryId+"/"+j),j,no}:
+		case out <- Result{DownloadImage("https://ba.hitomi.la/galleries/"+GalleryId+"/"+j),j,no}:
 		case <-ctrl:
 			return
 		}
