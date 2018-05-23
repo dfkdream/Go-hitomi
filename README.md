@@ -10,6 +10,7 @@
 * `-n Gallery_name(str)`: Set gallery name(filename) **(optional)**
 * `-c Compression(bool)`: Compress files if true **(optional, default:true)**
 * `-s HTTPSvr(bool)`: Start HTTP file server in current directory port 80 **(optional, default:false)** 
+* `-r RetryLimit(int)`: Limit of image download retry **(optional, default:3)**
 
 #### Basic how to use
 1. Run command `Go-hitomi -i [Gallery_ID] -n [Gallery_name]`

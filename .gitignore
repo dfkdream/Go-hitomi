@@ -1,2 +1,6 @@
 *.exe
 *.zip
+.vscode/*
+pkg/*
+src/*
+debug
