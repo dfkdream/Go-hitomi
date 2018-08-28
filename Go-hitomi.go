@@ -28,7 +28,7 @@ type Result struct {
 }
 
 func GetImageNamesFromID(GalleryID string) []string {
-	_, resp, _ := fasthttp.Get(nil, "https://hitomi.la/galleries/"+GalleryID+".js")
+	_, resp, _ := fasthttp.Get(nil, "https://ltn.hitomi.la/galleries/"+GalleryID+".js")
 	resp = bytes.Replace(resp, []byte("var galleryinfo = "), []byte(""), -1)
 	var ImageInfo []ImageInfo
 	json.Unmarshal(resp, &ImageInfo)
@@ -61,7 +61,7 @@ func DownloadImage(url string, try int, signal chan<- string) []byte {
 func DownloadWorker(no int, GalleryId string, rLimit int, signal chan<- string, ctrl <-chan struct{}, jobs <-chan string, out chan<- Result) {
 	for j := range jobs {
 		select {
-		case out <- Result{DownloadImage("https://0a.hitomi.la/galleries/"+GalleryId+"/"+j, rLimit, signal), j, no}:
+		case out <- Result{DownloadImage("https://ba.hitomi.la/galleries/"+GalleryId+"/"+j, rLimit, signal), j, no}:
 		case <-ctrl:
 			return
 		}
