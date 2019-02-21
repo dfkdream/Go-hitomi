@@ -1,5 +1,6 @@
 *.exe
 *.zip
+*.go1
 .vscode/*
 pkg/*
 src/*

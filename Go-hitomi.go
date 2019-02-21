@@ -4,12 +4,14 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"sync"
 
 	"github.com/valyala/fasthttp"
@@ -25,6 +27,17 @@ type Result struct {
 	Image   []byte
 	ImgName string
 	WK_ID   int
+}
+
+func testPrefix(prefix string, galleryID string, img string) error {
+	stat, _, err := fasthttp.Get(nil, "https://"+prefix+".hitomi.la/galleries/"+galleryID+"/"+img)
+	if err != nil {
+		return err
+	}
+	if stat != 200 {
+		return errors.New(strconv.Itoa(stat))
+	}
+	return nil
 }
 
 func GetImageNamesFromID(GalleryID string) []string {
@@ -58,10 +71,10 @@ func DownloadImage(url string, try int, signal chan<- string) []byte {
 	return nil
 }
 
-func DownloadWorker(no int, GalleryId string, rLimit int, signal chan<- string, ctrl <-chan struct{}, jobs <-chan string, out chan<- Result) {
+func DownloadWorker(prefix string, no int, GalleryId string, rLimit int, signal chan<- string, ctrl <-chan struct{}, jobs <-chan string, out chan<- Result) {
 	for j := range jobs {
 		select {
-		case out <- Result{DownloadImage("https://ba.hitomi.la/galleries/"+GalleryId+"/"+j, rLimit, signal), j, no}:
+		case out <- Result{DownloadImage("https://"+prefix+".hitomi.la/galleries/"+GalleryId+"/"+j, rLimit, signal), j, no}:
 		case <-ctrl:
 			return
 		}
@@ -112,6 +125,31 @@ func main() {
 	num_lst := len(img_lst)
 	fmt.Println("fetched", num_lst, "images")
 
+	prefixList := []string{"aa", "ba", "g"}
+	var imgPrefix string
+	for _, pf := range prefixList {
+		if err := testPrefix(pf, *Gallery_ID, img_lst[0]); err == nil {
+			imgPrefix = pf
+			fmt.Printf("Prefix found: %s\n", imgPrefix)
+			break
+		} else {
+			fmt.Printf("Prefix %s failed: %s\n", pf, err.Error())
+		}
+	}
+
+	if imgPrefix == "" {
+		fmt.Println("Prefix not found.")
+		fmt.Printf("Enter prefix manually?(y/n): ")
+		var ans string
+		fmt.Scanf("%s\n", &ans)
+		if ans != "y" {
+			fmt.Println("bye")
+			os.Exit(0)
+		}
+		fmt.Printf("Enter prefix: ")
+		fmt.Scanf("%s\n", &imgPrefix)
+	}
+
 	var archiveFile *os.File
 	var zipWriter *zip.Writer
 
@@ -147,7 +185,7 @@ func main() {
 
 	for i := 0; i < NumWorkers; i++ {
 		go func(n int) {
-			DownloadWorker(n, *Gallery_ID, *RetryLimit, signals, ctrl, jobs, out)
+			DownloadWorker(imgPrefix, n, *Gallery_ID, *RetryLimit, signals, ctrl, jobs, out)
 			wg.Done()
 		}(i)
 	}
