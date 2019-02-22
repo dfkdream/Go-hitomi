@@ -96,6 +96,12 @@ func init() {
 }
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("panic:", r)
+		}
+	}()
+
 	flag.Parse()
 	if *Gallery_ID == "" {
 		fmt.Println("<Commands>")
