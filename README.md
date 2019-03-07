@@ -5,6 +5,8 @@
 1. `git clone https://github.com/dfkdream/Go-hitomi.git`
 2. `go build Go-hitomi.go`
 
+Or you can download latest Windows x64 build [here](https://github.com/dfkdream/Go-hitomi/releases/latest)
+
 #### Commands
 * `-i Gallery_ID(int)`: Set gallery ID **(required)**
 * `-n Gallery_name(str)`: Set gallery name(filename) **(optional)**
