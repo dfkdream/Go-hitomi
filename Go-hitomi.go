@@ -48,10 +48,16 @@ type Result struct {
 }
 
 func GetImageNamesFromID(GalleryID string) []ImageInfo {
-	_, resp, _ := Client.Get(nil, "https://ltn.hitomi.la/galleries/"+GalleryID+".js")
+	code, resp, err := Client.Get(nil, "https://ltn.hitomi.la/galleries/"+GalleryID+".js")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if code != 200 {
+		log.Fatal(err)
+	}
 	resp = bytes.Replace(resp, []byte("var galleryinfo = "), []byte(""), -1)
 	var g GalleryInfo
-	err := json.Unmarshal(resp, &g)
+	err = json.Unmarshal(resp, &g)
 	if err != nil {
 		log.Fatal(err)
 	}
