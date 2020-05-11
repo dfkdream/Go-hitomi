@@ -5,3 +5,5 @@
 pkg/*
 src/*
 debug
+.idea
+.DS_Store
