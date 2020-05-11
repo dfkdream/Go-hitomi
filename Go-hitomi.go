@@ -4,52 +4,59 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
+	"github.com/valyala/fasthttp"
+	_ "golang.org/x/image/webp"
+	"image"
+	"image/jpeg"
+	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"runtime"
-	"strconv"
 	"sync"
-
-	"github.com/valyala/fasthttp"
 )
 
+//https://ba.hitomi.la/webp/e/49/7534d4bfe5d58bcfd1687352deb789f6f9d223a54b7f174fe5b431385216949e.webp
+
+type GalleryInfo struct {
+	LocalLang string      `json:"language_localname"`
+	Lang      string      `json:"language"`
+	Date      string      `json:"date"`
+	Files     []ImageInfo `json:"files"`
+	// Tags
+	Id    string `json:"id"`
+	Type  string `json:"type"`
+	Title string `json:"title"`
+}
+
 type ImageInfo struct {
-	Width  uint   `json:"width"`
-	Name   string `json:"name"`
-	Height uint   `json:"height"`
+	Width   uint   `json:"width"`
+	Name    string `json:"name"`
+	Height  uint   `json:"height"`
+	Hash    string `json:"hash"`
+	HasWebp int    `json:"haswebp"`
+	HasAvif int    `json:"hasavif"`
 }
 
 type Result struct {
 	Image   []byte
 	ImgName string
 	WK_ID   int
+	IsWebp  bool
 }
 
-func testPrefix(prefix string, galleryID string, img string) error {
-	stat, _, err := fasthttp.Get(nil, "https://"+prefix+".hitomi.la/galleries/"+galleryID+"/"+img)
-	if err != nil {
-		return err
-	}
-	if stat != 200 {
-		return errors.New(strconv.Itoa(stat))
-	}
-	return nil
-}
-
-func GetImageNamesFromID(GalleryID string) []string {
+func GetImageNamesFromID(GalleryID string) []ImageInfo {
 	_, resp, _ := fasthttp.Get(nil, "https://ltn.hitomi.la/galleries/"+GalleryID+".js")
 	resp = bytes.Replace(resp, []byte("var galleryinfo = "), []byte(""), -1)
-	var ImageInfo []ImageInfo
-	json.Unmarshal(resp, &ImageInfo)
-	var ImageNames []string
-	for _, Info := range ImageInfo {
-		ImageNames = append(ImageNames, Info.Name)
+	var g GalleryInfo
+	err := json.Unmarshal(resp, &g)
+	if err != nil {
+		log.Fatal(err)
 	}
-	return ImageNames
+	return g.Files
 }
 
 func LnsCurrentDirectory() {
@@ -63,18 +70,32 @@ func DownloadImage(url string, try int, signal chan<- string) []byte {
 		if i != 0 {
 			signal <- fmt.Sprintf("Redownloading %s: #%d/%d", url, i+1, try)
 		}
-		if stat, img, err := fasthttp.Get(nil, url); stat == 200 && err == nil && len(img) != 0 {
+		req := fasthttp.AcquireRequest()
+		req.URI().Update(url)
+		req.Header.SetMethod("GET")
+		req.Header.Set("Referer", "https://hitomi.la")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:75.0) Gecko/20100101 Firefox/75.0")
+		res := fasthttp.AcquireResponse()
+		if err := fasthttp.Do(req, res); err == nil && res.Header.StatusCode() == 200 && res.Header.ContentLength() > 0 {
+			img := make([]byte, res.Header.ContentLength())
+			copy(img, res.Body())
+			fasthttp.ReleaseResponse(res)
+			fasthttp.ReleaseRequest(req)
 			return img
+		} else {
+			signal <- fmt.Sprintf("Download Error: %s: %d %v", url, res.Header.StatusCode(), err)
 		}
+		fasthttp.ReleaseResponse(res)
+		fasthttp.ReleaseRequest(req)
 	}
 	signal <- "Download Failed: " + url
 	return nil
 }
 
-func DownloadWorker(prefix string, no int, GalleryId string, rLimit int, signal chan<- string, ctrl <-chan struct{}, jobs <-chan string, out chan<- Result) {
+func DownloadWorker(no int, rLimit int, signal chan<- string, ctrl <-chan struct{}, jobs <-chan ImageInfo, out chan<- Result) {
 	for j := range jobs {
 		select {
-		case out <- Result{DownloadImage("https://"+prefix+".hitomi.la/galleries/"+GalleryId+"/"+j, rLimit, signal), j, no}:
+		case out <- Result{DownloadImage(ImageURLFromImageInfo(j), rLimit, signal), j.Name, no, j.HasWebp == 1}:
 		case <-ctrl:
 			return
 		}
@@ -131,31 +152,6 @@ func main() {
 	num_lst := len(img_lst)
 	fmt.Println("fetched", num_lst, "images")
 
-	prefixList := []string{"aa", "ba", "g"}
-	var imgPrefix string
-	for _, pf := range prefixList {
-		if err := testPrefix(pf, *Gallery_ID, img_lst[0]); err == nil {
-			imgPrefix = pf
-			fmt.Printf("Prefix found: %s\n", imgPrefix)
-			break
-		} else {
-			fmt.Printf("Prefix %s failed: %s\n", pf, err.Error())
-		}
-	}
-
-	if imgPrefix == "" {
-		fmt.Println("Prefix not found.")
-		fmt.Printf("Enter prefix manually?(y/n): ")
-		var ans string
-		fmt.Scanf("%s\n", &ans)
-		if ans != "y" {
-			fmt.Println("bye")
-			os.Exit(0)
-		}
-		fmt.Printf("Enter prefix: ")
-		fmt.Scanf("%s\n", &imgPrefix)
-	}
-
 	var archiveFile *os.File
 	var zipWriter *zip.Writer
 
@@ -175,7 +171,7 @@ func main() {
 	}
 
 	ctrl := make(chan struct{})
-	jobs := make(chan string)
+	jobs := make(chan ImageInfo)
 	out := make(chan Result)
 	signals := make(chan string)
 
@@ -191,7 +187,7 @@ func main() {
 
 	for i := 0; i < NumWorkers; i++ {
 		go func(n int) {
-			DownloadWorker(imgPrefix, n, *Gallery_ID, *RetryLimit, signals, ctrl, jobs, out)
+			DownloadWorker(n, *RetryLimit, signals, ctrl, jobs, out)
 			wg.Done()
 		}(i)
 	}
@@ -212,8 +208,33 @@ func main() {
 	for r := range out {
 		count++
 
+		if r.IsWebp {
+			img, ext, err := image.Decode(bytes.NewBuffer(r.Image))
+			if err != nil {
+				log.Println(err)
+			}
+
+			if ext != "webp" {
+				log.Printf("Image extension mismatch: %s != webp", ext)
+			}
+
+			var iBuffer bytes.Buffer
+			err = jpeg.Encode(&iBuffer, img, &jpeg.Options{Quality: 100})
+			if err != nil {
+				log.Println("Encode Error:", err)
+			}
+
+			r.Image = iBuffer.Bytes()
+		}
+
 		if *Do_Compression {
-			f, err := zipWriter.Create(r.ImgName)
+			var f io.Writer
+			var err error
+			if r.IsWebp {
+				f, err = zipWriter.Create(r.ImgName + ".jpg")
+			} else {
+				f, err = zipWriter.Create(r.ImgName)
+			}
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -222,7 +243,12 @@ func main() {
 				fmt.Println(err)
 			}
 		} else {
-			err := ioutil.WriteFile(*Gallery_Name+"/"+r.ImgName, r.Image, os.FileMode(0644))
+			var err error
+			if r.IsWebp {
+				err = ioutil.WriteFile(*Gallery_Name+"/"+r.ImgName+".jpg", r.Image, os.FileMode(0644))
+			} else {
+				err = ioutil.WriteFile(*Gallery_Name+"/"+r.ImgName, r.Image, os.FileMode(0644))
+			}
 			if err != nil {
 				fmt.Println(err)
 			}
