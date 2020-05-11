@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpproxy"
 	_ "golang.org/x/image/webp"
 	"image"
 	"image/jpeg"
@@ -76,7 +77,7 @@ func DownloadImage(url string, try int, signal chan<- string) []byte {
 		req.Header.Set("Referer", "https://hitomi.la")
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:75.0) Gecko/20100101 Firefox/75.0")
 		res := fasthttp.AcquireResponse()
-		if err := fasthttp.Do(req, res); err == nil && res.Header.StatusCode() == 200 && res.Header.ContentLength() > 0 {
+		if err := Client.Do(req, res); err == nil && res.Header.StatusCode() == 200 && res.Header.ContentLength() > 0 {
 			img := make([]byte, res.Header.ContentLength())
 			copy(img, res.Body())
 			fasthttp.ReleaseResponse(res)
@@ -107,6 +108,9 @@ var Gallery_Name = flag.String("Gallery_Name", "", "Hitomi.la Gallery name")
 var Do_Compression = flag.Bool("Do_Compression", true, "Compress downloaded files if true")
 var HTTPSvr = flag.Bool("HTTPSvr", false, "Start HTTP Server")
 var RetryLimit = flag.Int("Retry_Limit", 3, "Limit of image download retry")
+var Socks5 = flag.String("Socks5_Proxy", "", "Socks5 Proxy address")
+
+var Client fasthttp.Client
 
 func init() {
 	flag.StringVar(Gallery_ID, "i", "", "Hitomi.la Gallery ID")
@@ -114,6 +118,7 @@ func init() {
 	flag.BoolVar(Do_Compression, "c", true, "Compress downloaded files if true")
 	flag.BoolVar(HTTPSvr, "s", false, "Start HTTP Server")
 	flag.IntVar(RetryLimit, "r", 3, "Limit of image download retry")
+	flag.StringVar(Socks5, "socks", "", "Socks5 Proxy address")
 }
 
 func main() {
@@ -131,10 +136,15 @@ func main() {
 		fmt.Println("-c : Compression")
 		fmt.Println("-s : Start HTTP Server")
 		fmt.Println("-r : Limit of image download retry")
+		fmt.Println("-socks : Socks5 proxy address")
 		os.Exit(1)
 	}
 	if *Gallery_Name == "" {
 		*Gallery_Name = *Gallery_ID
+	}
+
+	if *Socks5 != "" {
+		Client.Dial = fasthttpproxy.FasthttpSocksDialer(*Socks5)
 	}
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -146,6 +156,7 @@ func main() {
 	fmt.Println("Compression :", *Do_Compression)
 	fmt.Println("Start HTTP Server :", *HTTPSvr)
 	fmt.Println("Download retry limit :", *RetryLimit)
+	fmt.Println("Socks5 proxy address :", *Socks5)
 
 	fmt.Println("fetching image list")
 	img_lst := GetImageNamesFromID(*Gallery_ID)
