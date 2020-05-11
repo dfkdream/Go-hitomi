@@ -48,7 +48,7 @@ type Result struct {
 }
 
 func GetImageNamesFromID(GalleryID string) []ImageInfo {
-	_, resp, _ := fasthttp.Get(nil, "https://ltn.hitomi.la/galleries/"+GalleryID+".js")
+	_, resp, _ := Client.Get(nil, "https://ltn.hitomi.la/galleries/"+GalleryID+".js")
 	resp = bytes.Replace(resp, []byte("var galleryinfo = "), []byte(""), -1)
 	var g GalleryInfo
 	err := json.Unmarshal(resp, &g)
