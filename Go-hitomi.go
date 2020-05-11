@@ -20,8 +20,6 @@ import (
 	"sync"
 )
 
-//https://ba.hitomi.la/webp/e/49/7534d4bfe5d58bcfd1687352deb789f6f9d223a54b7f174fe5b431385216949e.webp
-
 type GalleryInfo struct {
 	LocalLang string      `json:"language_localname"`
 	Lang      string      `json:"language"`
