@@ -3,7 +3,7 @@
 
 #### Build
 1. `git clone https://github.com/dfkdream/Go-hitomi.git`
-2. `go build Go-hitomi.go`
+2. `go build`
 
 Or you can download latest Windows x64 build [here](https://github.com/dfkdream/Go-hitomi/releases/latest)
 
