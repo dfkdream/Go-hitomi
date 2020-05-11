@@ -53,7 +53,7 @@ func GetImageNamesFromID(GalleryID string) []ImageInfo {
 		log.Fatal(err)
 	}
 	if code != 200 {
-		log.Fatal(err)
+		log.Fatal("Error:", code)
 	}
 	resp = bytes.Replace(resp, []byte("var galleryinfo = "), []byte(""), -1)
 	var g GalleryInfo
